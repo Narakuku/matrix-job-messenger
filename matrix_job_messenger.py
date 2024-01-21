@@ -265,15 +265,15 @@ async def main():
         my_device_name = os.getenv('MATRIX_DEVICE_NAME')
         my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
 
-        # Ensure the store path exists
-        os.makedirs(my_store_path, exist_ok=True)
-        my_session_file = os.path.join(my_store_path, 'session.json')
-
         # Validate required environment variables
         required_vars = [my_homeserver, my_user_id, my_password, my_room_id, my_store_path]
         if not all(required_vars):
             logger.error("One or more required environment variables are missing.")
             return
+
+        # Ensure the store path exists
+        os.makedirs(my_store_path, exist_ok=True)
+        my_session_file = os.path.join(my_store_path, 'session.json')
 
         # Load session details from the session file if the .env variables are empty
         if not my_device_id or not my_access_token:
