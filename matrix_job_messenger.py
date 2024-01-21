@@ -7,22 +7,61 @@ from dotenv import load_dotenv
 from nio import (
     AsyncClient,
     ClientConfig,
+    crypto,
     LoginResponse,
     SyncResponse,
+    LoginResponse,
+    DevicesResponse,
     SyncError,
     JoinError,
-    DevicesResponse,
-    crypto,
     LocalProtocolError,
+    ToDeviceError,
+    KeyVerificationCancel,
+    KeyVerificationEvent,
+    KeyVerificationKey,
+    KeyVerificationMac,
+    KeyVerificationStart,
     )
-from task_check_urls import check_urls  # Import the function that generates the pre-send messages
+from task_check_urls import check_urls  # Import the function that generates the messages
 
 # Set up logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Client configuration for end-to-end encryption
 config = ClientConfig(store_sync_tokens=True, encryption_enabled=True)
+
+async def handle_key_verification(client, event):
+    """
+    Handle key verification events.
+
+    :param client: The Matrix AsyncClient instance.
+    :param event: The key verification event.
+    """
+    logger.info(f"Received key verification event: {event}")
+
+    if isinstance(event, KeyVerificationStart):
+        logger.info(f"KeyVerificationStart event: {event}")
+        if "emoji" not in event.short_authentication_string:
+            await client.cancel_key_verification(event.transaction_id)
+            logger.info("Only support Emoji verification, key verification cancelled.")
+        else:
+            await client.accept_key_verification(event.transaction_id)
+            logger.info("Emoji verification accepted.")
+            await asyncio.sleep(5)  # Add a short delay to prevent overflow
+    elif isinstance(event, KeyVerificationCancel):
+        logger.info(f"KeyVerificationCancel event: {event}")
+        logger.info("Key verification cancelled.")
+    elif isinstance(event, KeyVerificationKey):
+        logger.info(f"KeyVerificationKey event: {event}")
+        await client.confirm_short_auth_string(event.transaction_id)
+        logger.info("Short authentication string confirmed.")
+        await asyncio.sleep(5)  # Add a short delay to prevent overflow
+    elif isinstance(event, KeyVerificationMac):
+        logger.info(f"KeyVerificationMac event: {event}")
+        logger.info("Emoji verification was successful!")
+    else:
+        logger.info(f"Unhandled key verification event type: {type(event)}")
 
 async def collect_and_send_messages(client, room_id, tasks_to_run):
     """
@@ -265,15 +304,15 @@ async def main():
         my_device_name = os.getenv('MATRIX_DEVICE_NAME')
         my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
 
-        # Ensure the store path exists
-        os.makedirs(my_store_path, exist_ok=True)
-        my_session_file = os.path.join(my_store_path, 'session.json')
-
         # Validate required environment variables
         required_vars = [my_homeserver, my_user_id, my_password, my_room_id, my_store_path]
         if not all(required_vars):
             logger.error("One or more required environment variables are missing.")
             return
+
+        # Ensure the store path exists
+        os.makedirs(my_store_path, exist_ok=True)
+        my_session_file = os.path.join(my_store_path, 'session.json')
 
         # Load session details from the session file if the .env variables are empty
         if not my_device_id or not my_access_token:
@@ -299,6 +338,16 @@ async def main():
         # Send all collected messages to Matrix
         await collect_and_send_messages(client, my_room_id, tasks_to_run)
 
+        # Define a callback for to-device events
+        def to_device_callback(event):
+            asyncio.create_task(handle_key_verification(client, event))
+
+        # Register the callback with the client
+        client.add_to_device_callback(to_device_callback, (KeyVerificationEvent,))
+
+        # Start the client's sync_forever loop
+        await client.sync_forever(timeout=30000, full_state=True)
+
     except KeyboardInterrupt:
         logger.info("Program interrupted by user, shutting down.")
     except Exception as e:
@@ -310,3 +359,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
