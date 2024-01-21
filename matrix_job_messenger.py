@@ -21,23 +21,6 @@ from task_check_urls import check_urls  # Import the function that generates the
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Environment variables
-my_homeserver = os.getenv('MATRIX_HOMESERVER_URL')
-my_user_id = os.getenv('MATRIX_USER_ID')
-my_password = os.getenv('MATRIX_PASSWORD')
-my_room_id = os.getenv('MATRIX_ROOM_ID')
-my_store_path = os.getenv('MATRIX_STORE_PATH')
-my_device_id = os.getenv('MATRIX_DEVICE_ID')
-my_device_name = os.getenv('MATRIX_DEVICE_NAME')
-my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
-
-# Ensure the store path exists
-os.makedirs(my_store_path, exist_ok=True)
-my_session_file = os.path.join(my_store_path, 'session.json')
-
 # Client configuration for end-to-end encryption
 config = ClientConfig(store_sync_tokens=True, encryption_enabled=True)
 
@@ -269,6 +252,23 @@ async def main():
     """
     client = None
     try:
+        # Load environment variables from .env file
+        load_dotenv()
+
+        # Environment variables
+        my_homeserver = os.getenv('MATRIX_HOMESERVER_URL')
+        my_user_id = os.getenv('MATRIX_USER_ID')
+        my_password = os.getenv('MATRIX_PASSWORD')
+        my_room_id = os.getenv('MATRIX_ROOM_ID')
+        my_store_path = os.getenv('MATRIX_STORE_PATH')
+        my_device_id = os.getenv('MATRIX_DEVICE_ID')
+        my_device_name = os.getenv('MATRIX_DEVICE_NAME')
+        my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
+
+        # Ensure the store path exists
+        os.makedirs(my_store_path, exist_ok=True)
+        my_session_file = os.path.join(my_store_path, 'session.json')
+
         # Validate required environment variables
         required_vars = [my_homeserver, my_user_id, my_password, my_room_id, my_store_path]
         if not all(required_vars):
