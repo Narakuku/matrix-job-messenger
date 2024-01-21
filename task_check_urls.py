@@ -12,10 +12,10 @@ async def check_url_availability(url, session):
     try:
         async with session.get(url, timeout=10) as response:
             if response.status != 200:
-                return f"{url} returned error code: {response.status}."
+                return f"[ERROR] Unsuccessful response from {url}. Status code: {response.status}."
     except aiohttp.ClientConnectorError:
         hostname = url.split("://")[1].split("/")[0]
-        return f"Port for {hostname} is unreachable."
+        return f"[ERROR] Connection failed. Could not reach {hostname}."
     return None
 
 async def check_urls():
