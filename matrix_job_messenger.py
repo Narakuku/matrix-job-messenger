@@ -15,41 +15,55 @@ from nio import (
     crypto,
     LocalProtocolError,
     )
-from example_task_check_urls import check_urls  # Import the function that generates the pre-send messages
+from task_check_urls import check_urls  # Import the function that generates the pre-send messages
 
 # Set up logging
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Environment variables
+my_homeserver = os.getenv('MATRIX_HOMESERVER_URL')
+my_user_id = os.getenv('MATRIX_USER_ID')
+my_password = os.getenv('MATRIX_PASSWORD')
+my_room_id = os.getenv('MATRIX_ROOM_ID')
+my_store_path = os.getenv('MATRIX_STORE_PATH')
+my_device_id = os.getenv('MATRIX_DEVICE_ID')
+my_device_name = os.getenv('MATRIX_DEVICE_NAME')
+my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
+
+# Ensure the store path exists
+os.makedirs(my_store_path, exist_ok=True)
+my_session_file = os.path.join(my_store_path, 'session.json')
+
 # Client configuration for end-to-end encryption
 config = ClientConfig(store_sync_tokens=True, encryption_enabled=True)
 
-# Helper functions
-def save_session_to_file(session_file, device_id, access_token):
+async def collect_and_send_messages(client, room_id, tasks_to_run):
     """
-    Save the session details to a separate JSON file.
+    Collect messages from tasks and send them to the specified Matrix room.
+    
+    :param client: The Matrix AsyncClient instance.
+    :param room_id: The ID of the Matrix room to send messages to.
+    :param tasks_to_run: A list of tasks to run and collect messages from.
     """
-    try:
-        with open(session_file, 'w') as file:
-            json.dump({'device_id': device_id, 'access_token': access_token}, file)
-        logger.info(f"Session saved to {session_file}")
-    except Exception as e:
-        logger.error(f"An error occurred while saving the session to file: {e}")
+    task_coroutines = [run_task(task_func, task_name, *task_args) for task_name, task_func, task_args in tasks_to_run]
+    all_messages = await asyncio.gather(*task_coroutines)
+    all_messages = [message for sublist in all_messages for message in sublist]
 
-def load_session_from_file(session_file):
-    """
-    Load the session details from a JSON file.
-    """
-    try:
-        if os.path.exists(session_file):
-            with open(session_file, 'r') as file:
-                session = json.load(file)
-                return session.get('device_id'), session.get('access_token')
-        else:
-            return None, None
-    except Exception as e:
-        logger.error(f"An error occurred while loading the session from file: {e}")
-        return None, None
+    for message in all_messages:
+        if message:
+            await client.room_send(
+                room_id=room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.text",
+                    "body": message
+                }
+            )
+            logger.info(f"Message sent: {message}")
 
 async def run_task(task_func, task_name, *args, **kwargs):
     """
@@ -223,34 +237,43 @@ async def initialize_client(homeserver, user_id, device_id, store_path, config):
     client = AsyncClient(homeserver, user_id, device_id=device_id, store_path=store_path, config=config)
     return client
 
+def save_session_to_file(session_file, device_id, access_token):
+    """
+    Save the session details to a separate JSON file.
+    """
+    try:
+        with open(session_file, 'w') as file:
+            json.dump({'device_id': device_id, 'access_token': access_token}, file)
+        logger.info(f"Session saved to {session_file}")
+    except Exception as e:
+        logger.error(f"An error occurred while saving the session to file: {e}")
+
+def load_session_from_file(session_file):
+    """
+    Load the session details from a JSON file.
+    """
+    try:
+        if os.path.exists(session_file):
+            with open(session_file, 'r') as file:
+                session = json.load(file)
+                return session.get('device_id'), session.get('access_token')
+        else:
+            return None, None
+    except Exception as e:
+        logger.error(f"An error occurred while loading the session from file: {e}")
+        return None, None
+
 async def main():
     """
     The main function to run the Matrix client and perform tasks.
     """
     client = None
     try:
-        # Load environment variables from .env file
-        load_dotenv()
-
-        # Environment variables
-        my_homeserver = os.getenv('MATRIX_HOMESERVER_URL')
-        my_user_id = os.getenv('MATRIX_USER_ID')
-        my_password = os.getenv('MATRIX_PASSWORD')
-        my_room_id = os.getenv('MATRIX_ROOM_ID')
-        my_store_path = os.getenv('MATRIX_STORE_PATH')
-        my_device_id = os.getenv('MATRIX_DEVICE_ID')
-        my_device_name = os.getenv('MATRIX_DEVICE_NAME')
-        my_access_token = os.getenv('MATRIX_ACCESS_TOKEN')
-
         # Validate required environment variables
         required_vars = [my_homeserver, my_user_id, my_password, my_room_id, my_store_path]
         if not all(required_vars):
             logger.error("One or more required environment variables are missing.")
-            exit(1)
-
-        # Ensure the store path exists
-        os.makedirs(my_store_path, exist_ok=True)
-        my_session_file = os.path.join(my_store_path, 'session.json')
+            return
 
         # Load session details from the session file if the .env variables are empty
         if not my_device_id or not my_access_token:
@@ -273,23 +296,9 @@ async def main():
             # ("another_task", another_task, [arg1, arg2]),  # Example with arguments
         ]
 
-        # Run tasks concurrently and collect messages
-        task_coroutines = [run_task(task_func, task_name, *task_args) for task_name, task_func, task_args in tasks_to_run]
-        all_messages = await asyncio.gather(*task_coroutines)
-        all_messages = [message for sublist in all_messages for message in sublist]
-
         # Send all collected messages to Matrix
-        for message in all_messages:
-            if message:
-                await client.room_send(
-                    room_id=my_room_id,
-                    message_type="m.room.message",
-                    content={
-                        "msgtype": "m.text",
-                        "body": message
-                    }
-                )
-                logger.info(f"Message sent: {message}")
+        await collect_and_send_messages(client, my_room_id, tasks_to_run)
+
     except KeyboardInterrupt:
         logger.info("Program interrupted by user, shutting down.")
     except Exception as e:

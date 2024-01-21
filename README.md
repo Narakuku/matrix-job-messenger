@@ -24,7 +24,7 @@ Before you can run the script, you need to have the following installed:
 1. Clone the repository to your local machine:
 
 ```bash
-git clone git@github.com:Narakuku/matrix-job-messenger.git
+git clone https://github.com/Narakuku/matrix-job-messenger.git
 cd matrix-job-messenger
 ```
 
