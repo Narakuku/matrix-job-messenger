@@ -50,7 +50,7 @@ MATRIX_DEVICE_NAME=yourdevicename
 To run the script, simply execute the following command:
 
 ```bash
-python3 matrix_job_messenger.py
+python3 messenger.py
 ```
 
 The script will log in to the Matrix server, join rooms if invited, and start sending notifications to the specified room based on the output of the tasks defined in the script.
